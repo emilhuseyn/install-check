@@ -4,7 +4,7 @@ import { fetchManifest } from './facts/registry.js';
 import { buildFindings } from './findings.js';
 import { SOURCES } from './evidence.js';
 import { parsePackageUrl, parseSpec } from './url.js';
-import { route, factsForModel, runSummary, runQuestion, runDeep } from './ai.js';
+import { route, factsForModel, compactFacts, runSummary, runQuestion, runDeep } from './ai.js';
 import {
   InferenceMode, warmDevice, loadConfig, defaultConfig, appCheckStatus, deviceAvailability, deviceParams, downloadDeviceModel, readVerdict, writeVerdict
 } from './firebase.js';
@@ -179,13 +179,13 @@ function pendingLine(source, model, reason) {
   return el;
 }
 
-async function summarizeOnDevice(text, run) {
+async function summarizeOnDevice(texts, run) {
   const box = $('summary');
   const routing = { mode: InferenceMode.ONLY_ON_DEVICE, model: state.cfg.cloudModelLight, reason: 'On-device only, on request.' };
   box.replaceChildren(h('h2', {}, 'In plain words'), h('div', { class: 'skeleton' }), pendingLine('on_device', null, routing.reason));
   log('summary: on-device only, on request');
   try {
-    const out = await runSummary(text, routing);
+    const out = await runSummary(texts, routing, true);
     log('summary: done', { source: out.source, ms: out.ms });
     if (run !== state.run) return;
     box.replaceChildren(h('h2', {}, 'In plain words'), h('ol', {}, out.lines.map((l) => h('li', {}, l))), viaLine(out.source, out.model, out.ms, routing.reason));
@@ -198,7 +198,8 @@ async function summarizeOnDevice(text, run) {
 
 async function summarize(facts, findings, run) {
   const box = $('summary');
-  const text = factsForModel(facts, findings);
+  const texts = { full: factsForModel(facts, findings), compact: compactFacts(facts, findings) };
+  const text = texts.compact;
   if (state.device === 'checking') state.device = await deviceAvailability();
   const routing = route('summary', text.length, state.cfg, state.prefs, state.device);
   if (routing.blocked) {
@@ -215,21 +216,21 @@ async function summarize(facts, findings, run) {
     if (expectDevice && routing.mode !== InferenceMode.ONLY_ON_DEVICE) {
       const limit = state.cfg.onDeviceTimeoutS;
       try {
-        out = await withTimeout(runSummary(text, routing), limit * 1000, `Gemini Nano did not answer within ${limit} s`);
+        out = await withTimeout(runSummary(texts, routing, true), limit * 1000, `Gemini Nano did not answer within ${limit} s`);
       } catch (e) {
         log('summary: on-device attempt failed, using the cloud', String(e.message || e));
         if (run !== state.run) return;
         reason = `${e.message || e}, so the cloud answered.`;
         box.replaceChildren(h('h2', {}, 'In plain words'), ...skeleton(), pendingLine('in_cloud', routing.model, reason));
-        out = await runSummary(text, { ...routing, mode: InferenceMode.ONLY_IN_CLOUD });
+        out = await runSummary(texts, { ...routing, mode: InferenceMode.ONLY_IN_CLOUD }, false);
       }
     } else {
-      out = await runSummary(text, routing);
+      out = await runSummary(texts, routing, expectDevice);
     }
     log('summary: done', { source: out.source, model: out.model, ms: out.ms });
     if (run !== state.run) return;
     const retry = out.source !== 'on_device' && state.device === 'available'
-      ? h('button', { type: 'button', class: 'link', onclick: () => summarizeOnDevice(text, run) }, 'Run on Gemini Nano only')
+      ? h('button', { type: 'button', class: 'link', onclick: () => summarizeOnDevice(texts, run) }, 'Run on Gemini Nano only')
       : null;
     box.replaceChildren(h('h2', {}, 'In plain words'), h('ol', {}, out.lines.map((l) => h('li', {}, l))), viaLine(out.source, out.model, out.ms, reason), ...(retry ? [retry] : []));
     engineDot(out.source === 'on_device' ? 'eng-device' : 'eng-cloud', 'on');
@@ -313,8 +314,11 @@ function askSection() {
   const ask = async (q) => {
     if (!q.trim() || !state.current) return;
     input.value = q;
-    const text = factsForModel(state.current.facts, state.current.findings);
+    const { facts, findings } = state.current;
+    const onDevice = state.device === 'available' && !state.prefs.noDevice;
+    const text = onDevice ? compactFacts(facts, findings) : factsForModel(facts, findings);
     const routing = route('question', text.length + q.length, state.cfg, state.prefs, state.device);
+    log('question: start', { expected: onDevice ? 'on_device' : 'in_cloud', chars: text.length });
     if (routing.blocked) {
       answer.replaceChildren(h('p', { class: 'muted' }, routing.reason));
       return;

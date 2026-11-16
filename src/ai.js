@@ -39,6 +39,42 @@ export function factsForModel(facts, findings) {
   return lines.join('\n');
 }
 
+// Short, explicit input for Gemini Nano: one line per signal, warnings first, at most two measured numbers.
+// A small on-device model reads this faster and misreads it less than the full card text.
+export function compactFacts(facts, findings) {
+  const rank = { warn: 0, note: 1, ok: 2 };
+  const cards = [...findings.cards].sort((a, b) => rank[a.level] - rank[b.level]);
+  const label = { warn: 'WARNING', note: 'NOTE', ok: 'OK' };
+  const out = [`Package: ${facts.name} version ${facts.version}. Latest version: ${facts.latest}.${facts.isLatest ? ' This is the latest version.' : ''}`];
+  for (const c of cards) out.push(`${label[c.level]} (${c.title}): ${c.headline}.`);
+  const ev = cards.filter((c) => c.level !== 'ok').flatMap((c) => (c.evidence || []).slice(0, 1)).slice(0, 2);
+  for (const e of ev) out.push(`Measured across npm: ${e.text}`);
+  return out.join('\n');
+}
+
+export function deviceSummaryPrompt(compact) {
+  return `${compact}
+
+Using only the lines above, write exactly three short sentences for a developer about to run npm install. Put each sentence on its own line, with no numbering and no markdown.
+First: what the build record proves for this version, or that there is none.
+Second: the WARNING line in plain words, copying its version numbers and day count exactly, or the most important NOTE if there is no WARNING.
+Third: one thing to do before installing.`;
+}
+
+function toLines(text) {
+  const t = text.trim();
+  if (t.startsWith('{')) {
+    try {
+      return (JSON.parse(t).lines || []).slice(0, 3);
+    } catch {
+      /* fall through to plain lines */
+    }
+  }
+  let lines = t.split(/\n+/).map((l) => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+  if (lines.length < 3) lines = lines.flatMap((l) => l.split(/(?<=[.!?])\s+(?=[A-Z])/)).map((l) => l.trim()).filter(Boolean);
+  return lines.slice(0, 3);
+}
+
 const RULES = `Rules: use only the FACTS below. Do not add numbers that are not in FACTS. Do not say a package is safe or malicious. Plain words, no markdown, no jargon a junior developer would not know.`;
 
 export const SUMMARY_JSON_SCHEMA = {
@@ -125,11 +161,16 @@ function parseJson(text) {
   return JSON.parse(t);
 }
 
-export async function runSummary(factsText, routing) {
-  const model = hybridModel({ mode: routing.mode, cloudModel: routing.model, schema: SUMMARY_SCHEMA, constraint: SUMMARY_JSON_SCHEMA });
-  const { r, ms } = await timed(() => model.generateContent(summaryPrompt(factsText)));
-  const out = parseJson(r.response.text());
-  return { lines: (out.lines || []).slice(0, 3), source: r.response.inferenceSource, ms, model: r.response.inferenceSource === 'on_device' ? 'Gemini Nano' : routing.model };
+// texts = { full, compact }. On-device runs get the compact facts and a plain three-line prompt; cloud runs get the
+// full facts with a JSON schema.
+export async function runSummary(texts, routing, onDevice) {
+  const model = onDevice
+    ? hybridModel({ mode: routing.mode, cloudModel: routing.model, temperature: 0.2 })
+    : hybridModel({ mode: routing.mode, cloudModel: routing.model, schema: SUMMARY_SCHEMA, constraint: SUMMARY_JSON_SCHEMA });
+  const prompt = onDevice ? deviceSummaryPrompt(texts.compact) : summaryPrompt(texts.full);
+  const { r, ms } = await timed(() => model.generateContent(prompt));
+  const lines = onDevice ? toLines(r.response.text()) : (parseJson(r.response.text()).lines || []).slice(0, 3);
+  return { lines, source: r.response.inferenceSource, ms, model: r.response.inferenceSource === 'on_device' ? 'Gemini Nano' : routing.model };
 }
 
 export async function* runQuestion(factsText, question, routing) {

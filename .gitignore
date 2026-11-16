@@ -3,3 +3,5 @@ dist/
 .env
 .firebase/
 *.local
+video/out/
+video/rec/

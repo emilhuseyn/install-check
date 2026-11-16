@@ -107,7 +107,8 @@ export function hybridModel({ mode, cloudModel, schema, constraint, temperature 
         : { temperature }
     },
     onDeviceParams: {
-      createOptions: { expectedInputs: TEXT_EN, expectedOutputs: TEXT_EN },
+      // Low temperature and topK keep the small model close to the facts it was given.
+      createOptions: { expectedInputs: TEXT_EN, expectedOutputs: TEXT_EN, temperature: 0.2, topK: 3 },
       promptOptions: constraint ? { responseConstraint: constraint } : {}
     }
   }, timeoutMs ? { timeout: timeoutMs } : undefined);
