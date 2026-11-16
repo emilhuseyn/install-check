@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Shared deep-check verdicts, one document per package version.
+    // Reads are open; writes must come through App Check (enforced on Firestore in the console),
+    // match the schema, and may replace an entry only after it is 30 days old.
+    match /verdicts/{id} {
+      allow read: if true;
+      allow create: if valid();
+      allow update: if valid() && resource.data.createdAt < request.time - duration.value(30, 'd');
+      allow delete: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function valid() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'version', 'schema', 'deep', 'model', 'inferenceSource', 'provenanceCommit', 'previous', 'createdAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 214
+        && d.version is string && d.version.size() > 0 && d.version.size() <= 256
+        && d.schema == 1
+        && d.deep is map
+        && d.deep.risk in ['none', 'low', 'review', 'high']
+        && d.deep.summary is string && d.deep.summary.size() <= 4000
+        && d.model is string && d.model.size() <= 64
+        && d.inferenceSource in ['in_cloud', 'on_device']
+        && d.createdAt == request.time;
+    }
+  }
+}

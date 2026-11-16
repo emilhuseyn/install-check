@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install Check</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon32.png" alt="" width="20" height="20">
+      <span>Install Check</span>
+    </div>
+    <div class="engines" id="engines" aria-label="Inference engines">
+      <span class="engine" id="eng-device" title="Gemini Nano on this device"><i></i>Nano</span>
+      <span class="engine" id="eng-cloud" title="Gemini in the cloud through Firebase AI Logic"><i></i>Cloud</span>
+    </div>
+  </header>
+
+  <form class="lookup" id="lookup" autocomplete="off">
+    <input id="lookup-input" type="text" placeholder="Package name, e.g. react or react@19.3.1" spellcheck="false" aria-label="Package name">
+    <button type="submit">Check</button>
+  </form>
+
+  <main id="main">
+    <section class="empty" id="empty">
+      <h1>Before you run <code>npm install</code></h1>
+      <p>Open a package on npmjs.com, or type a name above. Install Check reads the registry and the build record, then says what each green signal on the page proves, and what it leaves out.</p>
+      <p class="muted">Explanations run on Gemini Nano on this device. The cloud is used only when the device cannot, or when you ask for a deep check.</p>
+    </section>
+  </main>
+
+  <footer class="foot" id="foot">
+    <details>
+      <summary>Settings and status</summary>
+      <label class="toggle"><input type="checkbox" id="local-only"> On-device only (never send anything to the cloud)</label>
+      <dl class="status" id="status"></dl>
+      <div id="device-download"></div>
+      <h3>Where the numbers come from</h3>
+      <ul class="sources" id="sources"></ul>
+    </details>
+  </footer>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

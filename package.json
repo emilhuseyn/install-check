@@ -1,0 +1,21 @@
+{
+  "name": "install-check",
+  "version": "1.0.0",
+  "description": "Chrome extension: what npm trust signals prove and what they leave out, with Firebase AI Logic hybrid inference",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emilhuseyn/install-check.git"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "firebase": "13.3.0"
+  },
+  "type": "module",
+  "private": true
+}
